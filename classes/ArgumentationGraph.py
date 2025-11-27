@@ -63,16 +63,25 @@ class ArgumentationGraph:
         # Track added relation
         self.last_added_relations.append((src, tgt, relation))
 
-    def compute_strengths(self) -> Dict[str, float]:
-        model = semantics.QuadraticEnergyModel()
+    def compute_strengths(self, semantic: str) -> Dict[str, float]:
+        
+        # Recupera dinamicamente la classe dal modulo semantics
+        ModelClass = getattr(semantics, semantic)
+
+        # Istanzia la classe
+        model = ModelClass()
+
         model.BAG = self.bag
         model.approximator = algorithms.RK4(model)
         model.solve(delta=1e-2, epsilon=1e-4)
+
         strengths: Dict[str, float] = {}
         for arg in self.bag.arguments.values():
             strengths[arg.name] = float(getattr(arg, "strength", arg.get_initial_weight()))
+
         nx.set_node_attributes(self.G, strengths, "strength")
         return strengths
+
 
 
 
