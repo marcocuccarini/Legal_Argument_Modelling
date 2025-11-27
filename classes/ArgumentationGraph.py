@@ -16,8 +16,6 @@ from huggingface_hub import login
 
 import torch
 from sentence_transformers import SentenceTransformer, util
-from configuration.hyperparameters import *
-
 
 
 
