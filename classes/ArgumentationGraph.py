@@ -129,8 +129,11 @@ class ArgumentationGraph:
 
 
     def save_graph(self, dataset_name: str, sample_idx: int, save_dir: Path = None):
-        """Save the graph (GraphML, PNG, TXT) with styled attack/support arrows and legend."""
+        """Save the graph (GraphML, PNG, TXT) with clean separated legend panel."""
 
+        # -----------------------------
+        # Create directory
+        # -----------------------------
         graph_dir = (save_dir / dataset_name) if save_dir else (Path("graphs") / dataset_name)
         graph_dir.mkdir(parents=True, exist_ok=True)
 
@@ -144,32 +147,40 @@ class ArgumentationGraph:
         nx.write_graphml(self.G, graphml_path)
 
         # -----------------------------
-        # Prepare drawing
+        # Prepare data for graph drawing
         # -----------------------------
         strengths = nx.get_node_attributes(self.G, "strength")
         node_colors = [strengths.get(n, 0.5) for n in self.G.nodes]
         pos = nx.spring_layout(self.G, seed=42)
 
-        plt.figure(figsize=(12, 8))  # Wider to fit legend
+        # -----------------------------
+        # Create figure with 2 panels
+        # -----------------------------
+        fig, (ax_graph, ax_legend) = plt.subplots(
+            1, 2,
+            figsize=(18, 10),
+            gridspec_kw={'width_ratios': [3, 1]}  # left bigger than right
+        )
 
-        # Draw nodes
+        # -----------------------------
+        # Draw graph on left subplot
+        # -----------------------------
         nx.draw_networkx_nodes(
-            self.G, pos,
+            self.G, pos, ax=ax_graph,
             node_color=node_colors,
             cmap="coolwarm",
             node_size=1200,
             edgecolors="black"
         )
 
-        nx.draw_networkx_labels(self.G, pos, font_size=8)
+        nx.draw_networkx_labels(self.G, pos, ax=ax_graph, font_size=8)
 
-        # Separate edges by relation type
+        # Separate edges
         attack_edges = [(u, v) for u, v, d in self.G.edges(data=True) if d.get("relation") == "attack"]
         support_edges = [(u, v) for u, v, d in self.G.edges(data=True) if d.get("relation") == "support"]
 
-        # Attack: red, solid
         nx.draw_networkx_edges(
-            self.G, pos,
+            self.G, pos, ax=ax_graph,
             edgelist=attack_edges,
             edge_color="red",
             arrows=True,
@@ -177,9 +188,8 @@ class ArgumentationGraph:
             width=2.0
         )
 
-        # Support: green, dashed
         nx.draw_networkx_edges(
-            self.G, pos,
+            self.G, pos, ax=ax_graph,
             edgelist=support_edges,
             edge_color="green",
             style="dashed",
@@ -188,29 +198,41 @@ class ArgumentationGraph:
             width=1.8
         )
 
+        ax_graph.set_title(f"{dataset_name} — Sample {sample_idx}", fontsize=14)
+        ax_graph.axis("off")
+
         # -----------------------------
-        # Add legend on the side
+        # Legend on right subplot
         # -----------------------------
-        legend_text = "Legend (ID | Strength | Text):\n"
+        legend_text = "Legend (ID | Strength | Text):\n\n"
         for nid, data in self.G.nodes(data=True):
-            text_short = data.get('text','')[:50].replace("\n"," ")  # short preview
-            legend_text += f"{nid} | {data.get('strength',0):.3f} | {text_short}\n"
+            text_short = data.get('text', '').replace("\n", " ")[:90]  # preview text
+            legend_text += f"{nid} | {data.get('strength', 0):.3f}\n{text_short}\n\n"
 
-        plt.gcf().text(0.75, 0.5, legend_text, fontsize=8, va='center', ha='left', wrap=True)
+        ax_legend.text(
+            0.01, 0.99, legend_text,
+            va="top", ha="left",
+            fontsize=9,
+            wrap=True
+        )
+        ax_legend.axis("off")
 
-        plt.title(f"{dataset_name} — Sample {sample_idx}")
+        # -----------------------------
+        # Save PNG
+        # -----------------------------
         plt.savefig(png_path, dpi=200, bbox_inches="tight")
         plt.close()
 
         # -----------------------------
-        # Save TXT with legend
+        # Save TXT summary
         # -----------------------------
         lines = ["="*60, f"Graph State: {dataset_name} Sample {sample_idx}", "-"*60]
 
         # Nodes
         lines.append("Nodes (id | type | strength | text):")
         for nid, data in self.G.nodes(data=True):
-            lines.append(f"{nid:4s} | {data.get('type','?'):10s} | {data.get('strength',0):.3f} | {data.get('text','')[:200]}")
+            lines.append(f"{nid:4s} | {data.get('type','?'):10s} | "
+                         f"{data.get('strength',0):.3f} | {data.get('text','')[:200]}")
 
         # Edges
         lines.append("\nRelations (src -> tgt : relation):")
@@ -220,13 +242,12 @@ class ArgumentationGraph:
         # Legend
         lines.append("\nLegend (ID | Strength | Text):")
         for nid, data in self.G.nodes(data=True):
-            text_short = data.get('text','')[:50].replace("\n"," ")
+            text_short = data.get('text', '').replace("\n", " ")[:90]
             lines.append(f"{nid:4s} | {data.get('strength',0):.3f} | {text_short}")
 
-        lines.append("="*60+"\n")
-        txt_content = "\n".join(lines)
+        lines.append("="*60 + "\n")
 
         with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(txt_content)
+            f.write("\n".join(lines))
 
         print(f"💾 Saved graph → {graphml_path.name}, {png_path.name}, {txt_path.name}")
