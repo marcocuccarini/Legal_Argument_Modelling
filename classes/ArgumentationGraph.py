@@ -72,7 +72,7 @@ class ArgumentationGraph:
         model = ModelClass()
 
         model.BAG = self.bag
-        model.approximator = algorithms.RK4(model)
+        model.approximator = grad.algorithms.RK4(model)
         model.solve(delta=1e-2, epsilon=1e-4)
 
         strengths: Dict[str, float] = {}
