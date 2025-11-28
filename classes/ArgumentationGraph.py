@@ -52,16 +52,20 @@ class ArgumentationGraph:
         self.last_added_arguments.append(node_id)
 
         return node_id
+        
+    def add_relation(self, src: str, tgt: str, relation: str, weight: float = 1.0):
+        # Add to graph
+        self.G.add_edge(src, tgt, relation=relation, weight=weight)
 
-    def add_relation(self, src: str, tgt: str, relation: str):
-        self.G.add_edge(src, tgt, relation=relation)
+        # Add to BAG
         if relation == "support":
-            self.bag.add_support(self.bag.arguments[src], self.bag.arguments[tgt])
+            self.bag.add_support(self.bag.arguments[src], self.bag.arguments[tgt], weight)
         elif relation == "attack":
-            self.bag.add_attack(self.bag.arguments[src], self.bag.arguments[tgt])
+            self.bag.add_attack(self.bag.arguments[src], self.bag.arguments[tgt], weight)
 
         # Track added relation
         self.last_added_relations.append((src, tgt, relation))
+
 
     def compute_strengths(self, semantic: str) -> Dict[str, float]:
         print("\n=== compute_strengths DEBUG START ===")
