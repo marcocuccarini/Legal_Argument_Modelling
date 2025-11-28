@@ -1,5 +1,4 @@
 import networkx as nx
-from Uncertainpy.src.uncertainpy.gradual import Argument, BAG, semantics, algorithms
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend
