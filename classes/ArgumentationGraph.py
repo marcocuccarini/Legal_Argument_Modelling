@@ -45,7 +45,7 @@ class ArgumentationGraph:
         node_id = f"{node_type[0].upper()}{self.node_counter}"
         self.node_counter += 1
         self.G.add_node(node_id, type=node_type, text=text, strength=initial_strength)
-        self.bag.arguments[node_id] = Argument(node_id, initial_weight=initial_strength)
+        self.bag.arguments[node_id] = grad.Argument(node_id, initial_weight=initial_strength)
         self.node_text_map[node_id] = text
 
         # Track added argument
