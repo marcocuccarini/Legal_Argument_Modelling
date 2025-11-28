@@ -1,6 +1,8 @@
 import os
 import re
 import string
+
+from .Arguable import Arguable
 from .Argument import Argument
 from .Support import Support
 from .Attack import Attack
@@ -13,6 +15,8 @@ class BAG:
         self.arguments = {}
         self.attacks = []
         self.supports = []
+
+        self.arguable = [] # List of all arguable elements (arguments, attacks, supports)
         
         self.path = path
 
@@ -27,9 +31,7 @@ class BAG:
                     else:
                         k_args = re.findall(rf"{k_name}\((.*?)\)", line)[0].replace(" ", "").split(",")
                         if k_name == "arg":
-                            argument = Argument(k_args[0], float(k_args[1]))
-                            self.arguments[argument.name] = argument
-
+                            self.add_argument(Argument(k_args[0], float(k_args[1])))
                         elif k_name == "att":
                             attacker = self.arguments[k_args[0]]
                             attacked = self.arguments[k_args[1]]
@@ -40,50 +42,76 @@ class BAG:
                             supported = self.arguments[k_args[1]]
                             self.add_support(supporter, supported)
 
+    def add_argument(self, argument, initial_weight=0.5):
+
+        if type(argument) == str:
+            argument = Argument(argument, initial_weight)
+
+        if type(argument) != Argument:
+            raise TypeError("argument must be of type Argument or str")
+
+        if argument.name in self.arguments:
+            raise ValueError(f"Argument with name {argument.name} already exists in BAG")
+        
+        self.arguments[argument.name] = argument
+        self.arguable.append(argument)
+
+        return argument
+
     def add_attack(self, attacker, attacked, attack_weight=1):
+
         if type(attacker) != Argument:
             raise TypeError("attacker must be of type Argument")
 
-        if type(attacked) != Argument:
-            raise TypeError("attacked must be of type Argument")
+        if not issubclass(type(attacked), Arguable):
+            raise TypeError("attacked must be subclass of Arguable")
 
         if attacker.name in self.arguments:
             attacker = self.arguments[attacker.name]
         else:
-            self.arguments[attacker.name] = attacker
+            self.add_argument(attacker)
 
-        if attacked.name in self.arguments:
-            attacked = self.arguments[attacked.name]
-        else:
-            self.arguments[attacked.name] = attacked
-            
-        attacked.add_attacker(attacker, attack_weight)
+        if type(attacked) == Argument:
+            if attacked.name in self.arguments:
+                attacked = self.arguments[attacked.name]
+            else:
+                self.add_argument(attacked)
+                
+        new_attack = Attack(attacker, attacked, attack_weight)
+        attacked.add_attack(new_attack)
+        self.attacks.append(new_attack)
+        self.arguable.append(new_attack)
 
-        self.attacks.append(Attack(attacker, attacked, attack_weight))
+        return new_attack
+
 
     def add_support(self, supporter, supported, support_weight=1):
         if type(supporter) != Argument:
             raise TypeError("supporter must be of type Argument")
 
-        if type(supported) != Argument:
-            raise TypeError("supported must be of type Argument")
+        if not issubclass(type(supported), Arguable):
+            raise TypeError("supported must be subclass of Arguable")
 
         if supporter.name in self.arguments:
             supporter = self.arguments[supporter.name]
         else:
-            self.arguments[supporter.name] = supporter
+            self.add_argument(supporter)
+        
+        if type(supported) == Argument:
+            if supported.name in self.arguments:
+                supported = self.arguments[supported.name]
+            else:
+                self.add_argument(supported)
 
-        if supported.name in self.arguments:
-            supported = self.arguments[supported.name]
-        else:
-            self.arguments[supported.name] = supported
-
-        supported.add_supporter(supporter, support_weight)
-
-        self.supports.append(Support(supporter, supported, support_weight))
+        new_support = Support(supporter, supported, support_weight)
+        supported.add_support(new_support)
+        self.supports.append(new_support)
+        self.arguable.append(new_support)
+            
+        return new_support
 
     def reset_strength_values(self):
-        for a in list(self.arguments.values()):
+        for a in self.arguable:
             a.strength = a.initial_weight
 
     def get_arguments(self):

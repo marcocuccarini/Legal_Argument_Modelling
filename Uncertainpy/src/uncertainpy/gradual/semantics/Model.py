@@ -1,14 +1,11 @@
 class Model:
-    def __init__(self, BAG=None, approximator=None, aggregation=None, influence=None, arguments=[], argument_strength=[], attacker={}, supporter={}, name="") -> None:
+    def __init__(self, BAG=None, approximator=None, aggregation=None, influence=None) -> None:
         self.BAG = BAG
         self.approximator = approximator
         self.aggregation = aggregation
         self.influence = influence
-        self.arguments = arguments
-        self.argument_strength = argument_strength
-        self.attacker = attacker
-        self.supporter = supporter
-        self.name = name
+        self.arguable_strength = {}
+        self.name = __class__.__name__
 
     def solve(self, delta, epsilon, verbose=True, generate_plot=False):
         if type(verbose) != bool:
@@ -33,7 +30,7 @@ class Model:
         return result
 
     def __repr__(self, name) -> str:
-        return f"{name}({self.BAG}, {self.approximator}, {self.arguments}, {self.argument_strength}, {self.attacker}, {self.supporter})"
+        return f"{name}({self.BAG}, {self.approximator}, {self.arguable_strength})"
 
     def __str__(self, name) -> str:
-        return f"{name} - BAG: {self.BAG}, Approximator: {self.approximator}, Arguments: {self.arguments}, Argument strength: {self.argument_strength}, Attacker: {self.attacker}, Supporter: {self.supporter})"
+        return f"{name} - BAG: {self.BAG}, Approximator: {self.approximator}, Argument strength: {self.arguable_strength})"
