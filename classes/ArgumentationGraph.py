@@ -66,7 +66,7 @@ class ArgumentationGraph:
     def compute_strengths(self, semantic: str) -> Dict[str, float]:
         
         # Recupera dinamicamente la classe dal modulo semantics
-        ModelClass = getattr(semantics, semantic)
+        ModelClass = getattr(grad.semantics, semantic)
 
         # Istanzia la classe
         model = ModelClass()
