@@ -2,14 +2,14 @@ class ProductAggregation:
     def __init__(self) -> None:
         pass
 
-    def aggregate_strength(self, attackers, supporters, state):
+    def aggregate_strength(self, attacks, supports, state):
         support_value = 1
-        for a in attackers:
-            support_value *= 1-state[a]
+        for a in attacks:
+            support_value *= 1-state[a]*state[a.source]
 
         attack_value = 1
-        for s in supporters:
-            attack_value *= 1-state[s]
+        for s in supports:
+            attack_value *= 1-state[s]*state[s.source]
 
         return support_value - attack_value
 
