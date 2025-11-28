@@ -25,7 +25,7 @@ class ArgumentationGraph:
     
     def __init__(self, active_hypotheses: bool = False, debug: bool = True):
         self.G = nx.DiGraph()
-        self.bag = BAG()
+        self.bag = grad.BAG()
         self.node_text_map: Dict[str, str] = {}
         self.node_counter = 0
         self.active_hypotheses = active_hypotheses
