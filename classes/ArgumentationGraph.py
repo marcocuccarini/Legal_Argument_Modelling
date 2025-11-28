@@ -68,6 +68,9 @@ class ArgumentationGraph:
         # Recupera dinamicamente la classe dal modulo semantics
         ModelClass = getattr(grad.semantics, semantic)
 
+        print(ModelClass)
+
+
         # Istanzia la classe
         model = ModelClass()
 
