@@ -64,26 +64,68 @@ class ArgumentationGraph:
         self.last_added_relations.append((src, tgt, relation))
 
     def compute_strengths(self, semantic: str) -> Dict[str, float]:
-        
-        # Recupera dinamicamente la classe dal modulo semantics
-        ModelClass = getattr(grad.semantics, semantic)
+        print("\n=== compute_strengths DEBUG START ===")
 
-        print(ModelClass)
+        # 1. Retrieve model class dynamically
+        print(f"[DEBUG] Requested semantic model: {semantic}")
+        try:
+            ModelClass = getattr(grad.semantics, semantic)
+            print(f"[DEBUG] Loaded model class: {ModelClass}")
+        except AttributeError:
+            print(f"[ERROR] semantic '{semantic}' not found in grad.semantics")
+            raise
 
-
-        # Istanzia la classe
+        # 2. Instantiate the model
         model = ModelClass()
+        print(f"[DEBUG] Model instance created: {model}")
 
+        # 3. Assign BAG
         model.BAG = self.bag
-        model.approximator = grad.algorithms.RK4(model)
-        model.solve(delta=1e-2, epsilon=1e-4)
+        print(f"[DEBUG] Model.BAG set with {len(self.bag.arguments)} arguments")
 
+        # 4. Set approximator
+        model.approximator = grad.algorithms.RK4(model)
+        print("[DEBUG] Approximator RK4 assigned")
+
+        # 5. Solve
+        print("[DEBUG] Calling model.solve(delta=1e-2, epsilon=1e-4)...")
+        try:
+            model.solve(delta=1e-2, epsilon=1e-4)
+            print("[DEBUG] Solve completed")
+        except Exception as e:
+            print(f"[ERROR] Solve failed: {e}")
+            raise
+
+        # 6. Collect strengths
         strengths: Dict[str, float] = {}
+        print("[DEBUG] Extracting strengths...")
+
         for arg in self.bag.arguments.values():
-            strengths[arg.name] = float(getattr(arg, "strength", arg.get_initial_weight()))
+            before = getattr(arg, "strength", None)
+            fallback = arg.get_initial_weight()
+            value = float(before if before is not None else fallback)
+
+            print(f"[DEBUG] Arg '{arg.name}' -> "
+                  f"strength before: {before}, "
+                  f"fallback: {fallback}, "
+                  f"used: {value}")
+
+            strengths[arg.name] = value
+
+        # 7. Update graph attributes
+        print("[DEBUG] Updating graph node attributes...")
+        print(f"[DEBUG] Strengths dict: {strengths}")
 
         nx.set_node_attributes(self.G, strengths, "strength")
+
+        # Verify update
+        for n, data in self.G.nodes(data=True):
+            print(f"[DEBUG] Node {n} strength on graph: {data.get('strength')}")
+
+        print("=== compute_strengths DEBUG END ===\n")
+
         return strengths
+
 
 
 
