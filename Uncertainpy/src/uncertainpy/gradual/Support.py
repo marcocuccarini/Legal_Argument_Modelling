@@ -1,23 +1,22 @@
-from .Arguable import Arguable
+class Support:
+    def __init__(self, supporter, supported, weight=1) -> None:
+        self.supporter = supporter
+        self.supported = supported
+        self.weight = weight
 
-class Support(Arguable):
-    def __init__(self, source, target, weight=1) -> None:
-        super().__init__(name=f"Sup({source},{target})", initial_weight=weight)
-        self.source = source
-        self.target = target
+    def get_supporter(self):
+        return self.supporter
 
-    def get_source(self):
-        return self.source
+    def get_supported(self):
+        return self.supported
 
-    def get_target(self):
-        return self.target
+    def get_weight(self):
+        return self.weight
 
-    def get_initial_weight(self):
-        return self.initial_weight
+    def __repr__(self) -> str:
+        return f"Support({self.supporter}, {self.supported}, weight={self.weight})"
 
     def __str__(self) -> str:
-        return f"Sup({self.source.name}, {self.target.name}):{round(self.initial_weight, 3)}->{round(self.strength, 3)}"
-    
-    def __repr__(self) -> str:
-        return self.__str__()
-
+        return (
+            f"Support by {self.supporter} to {self.supported} with weight {self.weight}"
+        )
