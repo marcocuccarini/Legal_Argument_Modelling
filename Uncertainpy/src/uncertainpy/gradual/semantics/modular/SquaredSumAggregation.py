@@ -1,14 +1,14 @@
-class SumAggregation:
+class SquaredSumAggregation:
     def __init__(self) -> None:
         pass
 
     def aggregate_strength(self, attacks, supports, state):
         aggregate = 0
         for a in attacks:
-            aggregate -= state[a] * state[a.source]
+            aggregate -= state[a] * state[a.source]**2
 
         for s in supports:
-            aggregate += state[s] * state[s.source]
+            aggregate += state[s] * state[s.source]**2
 
         return aggregate
     
