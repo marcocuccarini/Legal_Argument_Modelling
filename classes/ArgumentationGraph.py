@@ -84,7 +84,9 @@ class ArgumentationGraph:
         print(f"[DEBUG] Model instance created: {model}")
 
         # 3. Assign BAG
-        model.BAG = self.bag
+        model.bag = self.bag        # <-- the attribute the model actually uses
+        model.BAG = self.bag        # optional compatibility
+
         print(f"[DEBUG] Model.BAG set with {len(self.bag.arguments)} arguments")
 
         # 4. Set approximator
