@@ -7,30 +7,30 @@ import json
 import random
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
+
 from datasets import load_dataset
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from huggingface_hub import login
+
 import torch
 from sentence_transformers import SentenceTransformer, util
 import uncertainpy2.gradual as grad 
 
 
-
 class ArgumentationGraph:
-    def __init__(self, delta=1e-1, epsilon=1e-4, model_name: str = "ContinuousDFQuADModel"):
+    def __init__(self, delta=1e-1, epsilon=1e-4, model_name="ContinuousDFQuADModel"):
         self.BAG = grad.BAG()
         self.DELTA = delta
         self.EPSILON = epsilon
         self.arguments = {}
 
-        # Dynamically get the class from grad.semantics using the text name
+        # Dynamically get the class from grad.semantics using the text
         try:
             model_class = getattr(grad.semantics, model_name)
         except AttributeError:
             raise ValueError(f"Unknown model name: {model_name}")
 
-        # Instantiate it
+        # Instantiate the model
         self.model = model_class()
         self.model.BAG = self.BAG
         self.model.approximator = grad.algorithms.RK4(self.model)
@@ -39,16 +39,19 @@ class ArgumentationGraph:
     # ----------------------
     # Argument + relations
     # ----------------------
-    def add_argument(self, name, initial_strength=0.5):
+    def add_argument(self, name, initial_strength=0.5, description=""):
         arg = grad.Argument(name, initial_strength)
-        self.arguments[name] = arg
+        self.arguments[name] = {
+            "object": arg,
+            "description": description
+        }
         self.BAG.add_argument(arg)
         return arg
 
     def add_relation(self, source_name, target_name, relation_type="support", strength=1.0):
 
-        source = self.arguments[source_name]
-        target = self.arguments[target_name]
+        source = self.arguments[source_name]["object"]
+        target = self.arguments[target_name]["object"]
 
         if relation_type == "support":
             self.BAG.add_support(source, target, strength)
@@ -62,7 +65,10 @@ class ArgumentationGraph:
             # Create counter-attack node
             node_name = f"{source_name}_defends_{target_name}"
             counter_arg = grad.Argument(node_name, 0.5)
-            self.arguments[node_name] = counter_arg
+            self.arguments[node_name] = {
+                "object": counter_arg,
+                "description": f"Defense node: {source_name} defends {target_name}"
+            }
             self.BAG.add_argument(counter_arg)
 
             # defense = support → attack chain
@@ -79,12 +85,12 @@ class ArgumentationGraph:
         return self.model.solve(self.DELTA, self.EPSILON, True, True)
 
     def get_weights(self):
-        return {name: arg.strength for name, arg in self.arguments.items()}
+        return {name: data["object"].strength for name, data in self.arguments.items()}
 
     def print_weights(self):
         print("Argument strengths:")
-        for name, arg in self.arguments.items():
-            print(f"{name}: {arg.strength:.4f}")
+        for name, data in self.arguments.items():
+            print(f"{name}: {data['object'].strength:.4f} | {data['description']}")
 
     def plot_strengths(self):
         plot = grad.plotting.strengthplot(self.model, self.DELTA, self.EPSILON)
@@ -110,9 +116,18 @@ class ArgumentationGraph:
         # Build graph
         G = nx.DiGraph()
 
-        # Nodes
-        for name, arg in self.arguments.items():
-            G.add_node(name, strength=float(arg.strength), text=str(name), type="argument")
+        # Nodes with descriptions
+        for name, data in self.arguments.items():
+            arg_obj = data["object"]
+            desc = data["description"]
+
+            G.add_node(
+                name,
+                strength=float(arg_obj.strength),
+                text=name,
+                description=desc,
+                type="argument"
+            )
 
         # Edges (safe access to BAG)
         attacks = getattr(self.BAG, "attacks", [])
@@ -126,7 +141,9 @@ class ArgumentationGraph:
             G.add_edge(sup.source.name, sup.target.name,
                        relation="support", weight=float(sup.strength))
 
+        # -----------------------------
         # Save GraphML
+        # -----------------------------
         nx.write_graphml(G, graphml_path)
 
         # -----------------------------
@@ -161,10 +178,10 @@ class ArgumentationGraph:
         ax_graph.set_title(f"{dataset_name} — Sample {sample_idx}")
         ax_graph.axis("off")
 
-        # Legend panel
-        legend_text = "Legend (ID | Strength):\n\n"
+        # Legend panel with descriptions
+        legend_text = "Legend (ID | Strength | Description):\n\n"
         for nid, data in G.nodes(data=True):
-            legend_text += f"{nid} | {data['strength']:.3f}\n"
+            legend_text += f"{nid} | {data['strength']:.3f} | {data['description']}\n"
 
         ax_legend.text(0.01, 0.99, legend_text, va="top", ha="left", fontsize=9)
         ax_legend.axis("off")
@@ -182,7 +199,7 @@ class ArgumentationGraph:
 
             f.write("Nodes:\n")
             for nid, data in G.nodes(data=True):
-                f.write(f"{nid} | {data['strength']:.3f}\n")
+                f.write(f"{nid} | {data['strength']:.3f} | {data['description']}\n")
 
             f.write("\nEdges:\n")
             for src, tgt, ed in G.edges(data=True):
