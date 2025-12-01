@@ -18,287 +18,168 @@ from sentence_transformers import SentenceTransformer, util
 import uncertainpy2.gradual as grad 
 
 
-
-
-
 class ArgumentationGraph:
-    
-    def __init__(self, active_hypotheses: bool = False, debug: bool = True):
-        self.G = nx.DiGraph()
-        self.bag = grad.BAG()
-        self.node_text_map: Dict[str, str] = {}
-        self.node_counter = 0
-        self.active_hypotheses = active_hypotheses
-        self.debug = debug
+    def __init__(self, delta=1e-1, epsilon=1e-4):
+        self.BAG = grad.BAG()
+        self.model = grad.semantics.ContinuousDFQuADModel()
+        self.model.BAG = self.BAG
+        self.model.approximator = grad.algorithms.RK4(self.model)
 
-        # NEW: track nodes and relations added in last extend
-        self.last_added_arguments: List[str] = []
-        self.last_added_relations: List[Tuple[str, str, str]] = []
+        self.DELTA = delta
+        self.EPSILON = epsilon
 
+        self.arguments = {}
 
+    # ----------------------
+    # Argument + relations
+    # ----------------------
+    def add_argument(self, name, initial_strength=0.5):
+        arg = grad.Argument(name, initial_strength)
+        self.arguments[name] = arg
+        self.BAG.add_argument(arg)
+        return arg
 
+    def add_relation(self, source_name, target_name, relation_type="support", strength=1.0):
 
+        source = self.arguments[source_name]
+        target = self.arguments[target_name]
 
-
-
-    def add_argument(self, text: str, node_type: str = "argument", initial_strength: float = 0.5) -> str:
-        node_id = f"{node_type[0].upper()}{self.node_counter}"
-        self.node_counter += 1
-        self.G.add_node(node_id, type=node_type, text=text, strength=initial_strength)
-        self.bag.arguments[node_id] = grad.Argument(node_id, initial_weight=initial_strength)
-        self.node_text_map[node_id] = text
-
-        # Track added argument
-        self.last_added_arguments.append(node_id)
-
-        return node_id
-        
-    def add_relation(self, src: str, tgt: str, relation: str, weight: float = 1.0):
-        # Add to graph
-        self.G.add_edge(src, tgt, relation=relation, weight=weight)
-
-        # Add to BAG
-        if relation == "support":
-            self.bag.add_support(self.bag.arguments[src], self.bag.arguments[tgt], weight)
-        elif relation == "attack":
-            self.bag.add_attack(self.bag.arguments[src], self.bag.arguments[tgt], weight)
-
-        # Track added relation
-        self.last_added_relations.append((src, tgt, relation))
-
-
-    def compute_strengths(self, semantic: str) -> Dict[str, float]:
-        print("\n=== compute_strengths DEBUG START ===")
-
-        # 1. Retrieve model class dynamically
-        print(f"[DEBUG] Requested semantic model: {semantic}")
-        try:
-            ModelClass = getattr(grad.semantics, semantic)
-            print(f"[DEBUG] Loaded model class: {ModelClass}")
-        except AttributeError:
-            print(f"[ERROR] semantic '{semantic}' not found in grad.semantics")
-            raise
-
-        # 2. Instantiate the model
-        model = ModelClass()
-        print(f"[DEBUG] Model instance created: {model}")
-
-        # 3. Assign BAG
-        model.bag = self.bag        # <-- the attribute the model actually uses
-        model.BAG = self.bag        # optional compatibility
-
-        print(f"[DEBUG] Model.BAG set with {len(self.bag.arguments)} arguments")
-
-        # 4. Set approximator
-        model.approximator = grad.algorithms.RK4(model)
-        print("[DEBUG] Approximator RK4 assigned")
-
-        # 5. Solve
-        print("[DEBUG] Calling model.solve(delta=1e-2, epsilon=1e-4)...")
-        try:
-            model.solve(delta=1e-2, epsilon=1e-4)
-            print("[DEBUG] Solve completed")
-        except Exception as e:
-            print(f"[ERROR] Solve failed: {e}")
-            raise
-
-        # 6. Collect strengths
-        strengths: Dict[str, float] = {}
-        print("[DEBUG] Extracting strengths...")
-
-        for arg in self.bag.arguments.values():
-            before = getattr(arg, "strength", None)
-            fallback = arg.get_initial_weight()
-            value = float(before if before is not None else fallback)
-
-            print(f"[DEBUG] Arg '{arg.name}' -> "
-                  f"strength before: {before}, "
-                  f"fallback: {fallback}, "
-                  f"used: {value}")
-
-            strengths[arg.name] = value
-
-        # 7. Update graph attributes
-        print("[DEBUG] Updating graph node attributes...")
-        print(f"[DEBUG] Strengths dict: {strengths}")
-
-        nx.set_node_attributes(self.G, strengths, "strength")
-
-        # Verify update
-        for n, data in self.G.nodes(data=True):
-            print(f"[DEBUG] Node {n} strength on graph: {data.get('strength')}")
-
-        print("=== compute_strengths DEBUG END ===\n")
-
-        return strengths
-
-
-
-
-
- 
-
-
-
-
-    def get_text_from_id(self, node_id: str) -> str:
-        return self.node_text_map.get(node_id, "")
-
-    def print_graph(self, header: str = "Argumentation Graph State") -> str:
-        lines = ["="*60, header, "-"*60, "Nodes (id | type | strength | text):"]
-        for nid, data in self.G.nodes(data=True):
-            lines.append(f"{nid:4s} | {data.get('type','?'):10s} | {data.get('strength',0):.3f} | {data.get('text','')[:200]}")
-        lines.append("\nRelations (src -> tgt : relation):")
-        for src, tgt, edata in self.G.edges(data=True):
-            lines.append(f"{src} -> {tgt} : {edata.get('relation', '?')}")
-        lines.append("="*60+"\n")
-        txt = "\n".join(lines)
-        print(txt)
-        return txt
-
-        
-    def prune_isolated_arguments(self):
-        """Rimuove tutti gli argomenti isolati, ma mai le ipotesi."""
-        if not PRUNE_ISOLATED_ARGUMENTS:
+        if relation_type == "support":
+            self.BAG.add_support(source, target, strength)
             return
 
-        isolated = list(nx.isolates(self.G))
-        removed = []
+        if relation_type == "attack":
+            self.BAG.add_attack(source, target, strength)
+            return
 
-        for nid in isolated:
-            ntype = self.G.nodes[nid].get("type", "")
-            if ntype == "hypothesis":
-                continue  # Never prune hypotheses
-            self.G.remove_node(nid)
-            self.bag.arguments.pop(nid, None)
-            self.node_text_map.pop(nid, None)
-            removed.append(nid)
+        if relation_type == "defense":
+            # Create counter-attack node
+            node_name = f"{source_name}_defends_{target_name}"
+            counter_arg = grad.Argument(node_name, 0.5)
+            self.arguments[node_name] = counter_arg
+            self.BAG.add_argument(counter_arg)
 
-        if self.debug and removed:
-            print(f"🧹 Pruned isolated arguments (excluding hypotheses): {removed}")
+            # defense = support → attack chain
+            self.BAG.add_support(source, counter_arg, strength)
+            self.BAG.add_attack(counter_arg, target, strength)
+            return
 
+        raise ValueError("relation_type must be 'support', 'attack', or 'defense'.")
 
+    # ----------------------
+    # Solving / weights
+    # ----------------------
+    def solve(self):
+        return self.model.solve(self.DELTA, self.EPSILON, True, True)
 
+    def get_weights(self):
+        return {name: arg.strength for name, arg in self.arguments.items()}
+
+    def print_weights(self):
+        print("Argument strengths:")
+        for name, arg in self.arguments.items():
+            print(f"{name}: {arg.strength:.4f}")
+
+    def plot_strengths(self):
+        plot = grad.plotting.strengthplot(self.model, self.DELTA, self.EPSILON)
+        plot.show()
+
+    def run(self):
+        self.solve()
+        self.print_weights()
+        self.plot_strengths()
+
+    # -----------------------------
+    # Save graph (GraphML, PNG, TXT)
+    # -----------------------------
     def save_graph(self, dataset_name: str, sample_idx: int, save_dir: Path = None):
-        """Save the graph (GraphML, PNG, TXT) with clean separated legend panel."""
 
-        # -----------------------------
-        # Create directory
-        # -----------------------------
         graph_dir = (save_dir / dataset_name) if save_dir else (Path("graphs") / dataset_name)
         graph_dir.mkdir(parents=True, exist_ok=True)
 
         graphml_path = graph_dir / f"sample_{sample_idx}.graphml"
-        png_path     = graph_dir / f"sample_{sample_idx}.png"
-        txt_path     = graph_dir / f"sample_{sample_idx}.txt"
+        png_path = graph_dir / f"sample_{sample_idx}.png"
+        txt_path = graph_dir / f"sample_{sample_idx}.txt"
 
-        # -----------------------------
+        # Build graph
+        G = nx.DiGraph()
+
+        # Nodes
+        for name, arg in self.arguments.items():
+            G.add_node(name, strength=float(arg.strength), text=str(name), type="argument")
+
+        # Edges (safe access to BAG)
+        attacks = getattr(self.BAG, "attacks", [])
+        supports = getattr(self.BAG, "supports", [])
+
+        for atk in attacks:
+            G.add_edge(atk.source.name, atk.target.name,
+                       relation="attack", weight=float(atk.strength))
+
+        for sup in supports:
+            G.add_edge(sup.source.name, sup.target.name,
+                       relation="support", weight=float(sup.strength))
+
         # Save GraphML
-        # -----------------------------
-        nx.write_graphml(self.G, graphml_path)
+        nx.write_graphml(G, graphml_path)
 
         # -----------------------------
-        # Prepare data for graph drawing
+        # Draw PNG
         # -----------------------------
-        strengths = nx.get_node_attributes(self.G, "strength")
-        node_colors = [strengths.get(n, 0.5) for n in self.G.nodes]
-        pos = nx.spring_layout(self.G, seed=42)
+        strengths = nx.get_node_attributes(G, "strength")
+        node_colors = [float(strengths.get(n, 0.5)) for n in G.nodes]
 
-        # -----------------------------
-        # Create figure with 2 panels
-        # -----------------------------
+        pos = nx.spring_layout(G, seed=42)
+
         fig, (ax_graph, ax_legend) = plt.subplots(
-            1, 2,
-            figsize=(18, 10),
-            gridspec_kw={'width_ratios': [3, 1]}  # left bigger than right
+            1, 2, figsize=(18, 10), gridspec_kw={"width_ratios": [3, 1]}
         )
 
-        # -----------------------------
-        # Draw graph on left subplot
-        # -----------------------------
         nx.draw_networkx_nodes(
-            self.G, pos, ax=ax_graph,
-            node_color=node_colors,
-            cmap="coolwarm",
-            node_size=1200,
-            edgecolors="black"
+            G, pos, ax=ax_graph,
+            node_color=node_colors, cmap="coolwarm",
+            node_size=1200, edgecolors="black"
         )
 
-        nx.draw_networkx_labels(self.G, pos, ax=ax_graph, font_size=8)
+        nx.draw_networkx_labels(G, pos, ax=ax_graph, font_size=8)
 
-        # Separate edges
-        attack_edges = [(u, v) for u, v, d in self.G.edges(data=True) if d.get("relation") == "attack"]
-        support_edges = [(u, v) for u, v, d in self.G.edges(data=True) if d.get("relation") == "support"]
+        attack_edges = [(u, v) for u, v, d in G.edges(data=True) if d["relation"] == "attack"]
+        support_edges = [(u, v) for u, v, d in G.edges(data=True) if d["relation"] == "support"]
 
-        nx.draw_networkx_edges(
-            self.G, pos, ax=ax_graph,
-            edgelist=attack_edges,
-            edge_color="red",
-            arrows=True,
-            arrowsize=20,
-            width=2.0
-        )
+        nx.draw_networkx_edges(G, pos, ax=ax_graph, edgelist=attack_edges,
+                               edge_color="red", arrows=True, width=2)
 
-        nx.draw_networkx_edges(
-            self.G, pos, ax=ax_graph,
-            edgelist=support_edges,
-            edge_color="green",
-            style="dashed",
-            arrows=True,
-            arrowsize=20,
-            width=1.8
-        )
+        nx.draw_networkx_edges(G, pos, ax=ax_graph, edgelist=support_edges,
+                               edge_color="green", style="dashed", arrows=True, width=2)
 
-        ax_graph.set_title(f"{dataset_name} — Sample {sample_idx}", fontsize=14)
+        ax_graph.set_title(f"{dataset_name} — Sample {sample_idx}")
         ax_graph.axis("off")
 
-        # -----------------------------
-        # Legend on right subplot
-        # -----------------------------
-        legend_text = "Legend (ID | Strength | Text):\n\n"
-        for nid, data in self.G.nodes(data=True):
-            text_short = data.get('text', '').replace("\n", " ")[:90]  # preview text
-            legend_text += f"{nid} | {data.get('strength', 0):.3f}\n{text_short}\n\n"
+        # Legend panel
+        legend_text = "Legend (ID | Strength):\n\n"
+        for nid, data in G.nodes(data=True):
+            legend_text += f"{nid} | {data['strength']:.3f}\n"
 
-        ax_legend.text(
-            0.01, 0.99, legend_text,
-            va="top", ha="left",
-            fontsize=9,
-            wrap=True
-        )
+        ax_legend.text(0.01, 0.99, legend_text, va="top", ha="left", fontsize=9)
         ax_legend.axis("off")
 
-        # -----------------------------
-        # Save PNG
-        # -----------------------------
         plt.savefig(png_path, dpi=200, bbox_inches="tight")
         plt.close()
 
         # -----------------------------
-        # Save TXT summary
+        # Save TXT
         # -----------------------------
-        lines = ["="*60, f"Graph State: {dataset_name} Sample {sample_idx}", "-"*60]
-
-        # Nodes
-        lines.append("Nodes (id | type | strength | text):")
-        for nid, data in self.G.nodes(data=True):
-            lines.append(f"{nid:4s} | {data.get('type','?'):10s} | "
-                         f"{data.get('strength',0):.3f} | {data.get('text','')[:200]}")
-
-        # Edges
-        lines.append("\nRelations (src -> tgt : relation):")
-        for src, tgt, edata in self.G.edges(data=True):
-            lines.append(f"{src} -> {tgt} : {edata.get('relation', '?')}")
-
-        # Legend
-        lines.append("\nLegend (ID | Strength | Text):")
-        for nid, data in self.G.nodes(data=True):
-            text_short = data.get('text', '').replace("\n", " ")[:90]
-            lines.append(f"{nid:4s} | {data.get('strength',0):.3f} | {text_short}")
-
-        lines.append("="*60 + "\n")
-
         with open(txt_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+            f.write("="*60 + "\n")
+            f.write(f"Graph State: {dataset_name} Sample {sample_idx}\n")
+            f.write("="*60 + "\n\n")
 
-        print(f"💾 Saved graph → {graphml_path.name}, {png_path.name}, {txt_path.name}")
+            f.write("Nodes:\n")
+            for nid, data in G.nodes(data=True):
+                f.write(f"{nid} | {data['strength']:.3f}\n")
+
+            f.write("\nEdges:\n")
+            for src, tgt, ed in G.edges(data=True):
+                f.write(f"{src} -> {tgt} ({ed['relation']})\n")
+
+        print(f"Saved graph → {graphml_path.name}, {png_path.name}, {txt_path.name}")
