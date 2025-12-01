@@ -7,28 +7,34 @@ import json
 import random
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
-
 from datasets import load_dataset
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from huggingface_hub import login
-
 import torch
 from sentence_transformers import SentenceTransformer, util
 import uncertainpy2.gradual as grad 
 
 
+
 class ArgumentationGraph:
-    def __init__(self, delta=1e-1, epsilon=1e-4):
+    def __init__(self, delta=1e-1, epsilon=1e-4, model_name: str = "ContinuousDFQuADModel"):
         self.BAG = grad.BAG()
-        self.model = grad.semantics.ContinuousDFQuADModel()
+        self.DELTA = delta
+        self.EPSILON = epsilon
+        self.arguments = {}
+
+        # Dynamically get the class from grad.semantics using the text name
+        try:
+            model_class = getattr(grad.semantics, model_name)
+        except AttributeError:
+            raise ValueError(f"Unknown model name: {model_name}")
+
+        # Instantiate it
+        self.model = model_class()
         self.model.BAG = self.BAG
         self.model.approximator = grad.algorithms.RK4(self.model)
 
-        self.DELTA = delta
-        self.EPSILON = epsilon
-
-        self.arguments = {}
 
     # ----------------------
     # Argument + relations
